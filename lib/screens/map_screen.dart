@@ -1,6 +1,5 @@
 ﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-// Import with aliases to resolve class name conflicts
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
@@ -60,14 +59,13 @@ class _MapScreenState extends State<MapScreen> {
     });
     
     if (_mapboxMap != null && _isMapReady && _currentLat != null) {
-      _mapboxMap!.flyTo(
-        mapbox.CameraOptions(
-          center: mapbox.Point(
-            coordinates: mapbox.Position(_currentLng!, _currentLat!)
-          ),
-          zoom: 14.0,
+      final mapbox.CameraOptions options = mapbox.CameraOptions(
+        center: mapbox.Point(
+          coordinates: mapbox.Position(_currentLng!, _currentLat!)
         ),
+        zoom: 14.0,
       );
+      _mapboxMap!.flyTo(options);
     }
   }
 
@@ -194,14 +192,13 @@ class _MapScreenState extends State<MapScreen> {
       });
       
       if (_mapboxMap != null && _isMapReady && _isTracking && _currentLat != null) {
-        _mapboxMap!.flyTo(
-          mapbox.CameraOptions(
-            center: mapbox.Point(
-              coordinates: mapbox.Position(_currentLng!, _currentLat!)
-            ),
-            zoom: 15.0,
+        final mapbox.CameraOptions options = mapbox.CameraOptions(
+          center: mapbox.Point(
+            coordinates: mapbox.Position(_currentLng!, _currentLat!)
           ),
+          zoom: 15.0,
         );
+        _mapboxMap!.flyTo(options);
       }
     });
   }
