@@ -4,7 +4,9 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
-const String MAPBOX_TOKEN = 'pk.eyJ1IjoiNzkxOTYxMSIsImEiOiJjbW8zd3kzbXgxYjVmMnBwdWZnemF3NWhlIn0.nPTx4At6TJEiNe7xlU4YkQ';
+// Token will be injected from local.properties at build time
+// For local development, set MAPBOX_TOKEN environment variable
+const String MAPBOX_TOKEN = String.fromEnvironment('MAPBOX_TOKEN', defaultValue: '');
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
   @override
@@ -13,6 +15,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   mapbox.MapboxMap? _mapboxMap;
   bool _isMapReady = false;
+  String _mapStatus = 'Initializing...';
   double? _currentLat;
   double? _currentLng;
   bool _isTracking = false;
@@ -25,6 +28,15 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initTts();
     _requestLocation();
+    _checkToken();
+  }
+  void _checkToken() {
+    if (MAPBOX_TOKEN.isEmpty) {
+      setState(() => _mapStatus = 'ERROR: No Mapbox token. Set MAPBOX_TOKEN environment variable.');
+    } else {
+      setState(() => _mapStatus = 'Token present, loading map...');
+      debugPrint('Token loaded (starts with: ${MAPBOX_TOKEN.substring(0, 10)}...)');
+    }
   }
   Future<void> _initTts() async {
     await _tts.setLanguage("en-US");
@@ -217,7 +229,21 @@ class _MapScreenState extends State<MapScreen> {
               ),
               zoom: 12.0,
             ),
-            styleUri: 'mapbox://styles/mapbox/light-v11',
+            styleUri: 'mapbox://styles/mapbox/standard',
+          ),
+          Positioned(
+            bottom: 20,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              color: Colors.black54,
+              child: Text(
+                _mapStatus,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
           if (!_isMapReady)
             const Center(
@@ -237,6 +263,7 @@ class _MapScreenState extends State<MapScreen> {
   void _onMapCreated(mapbox.MapboxMap mapboxMap) {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
+    setState(() => _mapStatus = '✅ Map loaded!');
     debugPrint('✅ Map created successfully!');
     mapboxMap.location.updateSettings(
       mapbox.LocationComponentSettings(enabled: true)
