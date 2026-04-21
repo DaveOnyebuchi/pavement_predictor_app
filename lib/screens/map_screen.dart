@@ -13,6 +13,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   mapbox.MapboxMap? _mapboxMap;
   bool _isMapReady = false;
+  String? _errorMessage;
   double? _currentLat;
   double? _currentLng;
   bool _isTracking = false;
@@ -25,6 +26,16 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initTts();
     _requestLocation();
+    _checkMapboxToken();
+  }
+  void _checkMapboxToken() {
+    if (MAPBOX_TOKEN.isEmpty || MAPBOX_TOKEN == 'YOUR_MAPBOX_ACCESS_TOKEN') {
+      setState(() {
+        _errorMessage = 'Mapbox token is missing. Please add your token.';
+      });
+    } else {
+      debugPrint('Mapbox token present (starts with: ${MAPBOX_TOKEN.substring(0, 10)}...)');
+    }
   }
   Future<void> _initTts() async {
     await _tts.setLanguage("en-US");
@@ -206,16 +217,50 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      body: mapbox.MapWidget(
-        key: const ValueKey('mapWidget'),
-        onMapCreated: _onMapCreated,
-        cameraOptions: mapbox.CameraOptions(
-          center: mapbox.Point(
-            coordinates: mapbox.Position(-97.138, 49.895)
+      body: Stack(
+        children: [
+          mapbox.MapWidget(
+            key: const ValueKey('mapWidget'),
+            onMapCreated: _onMapCreated,
+            onError: (error) {
+              debugPrint('❌ Map error: $error');
+              setState(() {
+                _errorMessage = 'Map error: $error';
+              });
+            },
+            cameraOptions: mapbox.CameraOptions(
+              center: mapbox.Point(
+                coordinates: mapbox.Position(-97.138, 49.895)
+              ),
+              zoom: 12.0,
+            ),
+            styleUri: 'mapbox://styles/mapbox/light-v11',
           ),
-          zoom: 12.0,
-        ),
-        styleUri: 'mapbox://styles/mapbox/light-v11',
+          if (_errorMessage != null)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.all(20),
+                color: Colors.black87,
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          if (!_isMapReady && _errorMessage == null)
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text('Loading map...'),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
