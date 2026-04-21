@@ -1,5 +1,4 @@
-Set-Content -Path "android/app/build.gradle" -Value @'
-plugins {
+﻿plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
@@ -45,4 +44,3 @@ flutter {
 dependencies {
     implementation 'com.mapbox.maps:android:11.0.0'
 }
-'@ -Encoding UTF8
