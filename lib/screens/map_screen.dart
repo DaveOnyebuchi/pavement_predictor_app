@@ -1,11 +1,8 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:provider/provider.dart';
-import '../services/gps_service.dart';
-import '../services/api_service.dart';
-import '../services/tts_service.dart';
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
   @override
@@ -131,7 +128,6 @@ class _MapScreenState extends State<MapScreen> {
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),
-          // Custom zoom controls
           Positioned(
             bottom: 20,
             right: 20,
@@ -153,7 +149,6 @@ class _MapScreenState extends State<MapScreen> {
               ],
             ),
           ),
-          // Tracking indicator
           if (_isTracking)
             Positioned(
               top: 10,
