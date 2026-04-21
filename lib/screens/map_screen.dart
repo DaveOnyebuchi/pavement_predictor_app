@@ -4,8 +4,8 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
-// Use the same token name as your GitHub secret
-const String MAPBOX_TOKEN = String.fromEnvironment('MAPBOX_DOWNLOADS_TOKEN', defaultValue: '');
+// Use your PUBLIC token for map rendering (starts with pk.)
+const String MAPBOX_PUBLIC_TOKEN = 'pk.eyJ1IjoiNzkxOTYxMSIsImEiOiJjbW8zd3kzbXgxYjVmMnBwdWZnemF3NWhlIn0.nPTx4At6TJEiNe7xlU4YkQ';
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
   @override
@@ -30,12 +30,12 @@ class _MapScreenState extends State<MapScreen> {
     _checkToken();
   }
   void _checkToken() {
-    if (MAPBOX_TOKEN.isEmpty) {
-      setState(() => _mapStatus = 'ERROR: No token. Check MAPBOX_DOWNLOADS_TOKEN secret.');
+    if (MAPBOX_PUBLIC_TOKEN.isEmpty || MAPBOX_PUBLIC_TOKEN == 'pk.eyJ1IjoiNzkxOTYxMSIsImEiOiJjbW8zd3kzbXgxYjVmMnBwdWZnemF3NWhlIn0.nPTx4At6TJEiNe7xlU4YkQ') {
+      setState(() => _mapStatus = 'ERROR: Using default token');
     } else {
-      setState(() => _mapStatus = 'Token present, loading map...');
-      debugPrint('Token loaded');
+      setState(() => _mapStatus = 'Public token present, loading map...');
     }
+    debugPrint('Public token: ${MAPBOX_PUBLIC_TOKEN.substring(0, 20)}...');
   }
   Future<void> _initTts() async {
     await _tts.setLanguage("en-US");
