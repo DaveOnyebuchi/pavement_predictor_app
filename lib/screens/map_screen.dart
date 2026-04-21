@@ -1,207 +1,120 @@
-﻿import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
-import 'package:geolocator/geolocator.dart' as geo;
-import 'package:http/http.dart' as http;
+﻿import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-// Your Mapbox public token
-const String MAPBOX_PUBLIC_TOKEN = 'pk.eyJ1IjoiNzkxOTYxMSIsImEiOiJjbW8zd3kzbXgxYjVmMnBwdWZnemF3NWhlIn0.nPTx4At6TJEiNe7xlU4YkQ';
+import 'package:provider/provider.dart';
+import '../services/gps_service.dart';
+import '../services/api_service.dart';
+import '../services/tts_service.dart';
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 class _MapScreenState extends State<MapScreen> {
-  mapbox.MapboxMap? _mapboxMap;
-  bool _isMapReady = false;
-  String _mapStatus = 'Initializing...';
-  double? _currentLat;
-  double? _currentLng;
+  late final WebViewController _controller;
   bool _isTracking = false;
-  final TextEditingController _destinationController = TextEditingController();
-  final TextEditingController _startController = TextEditingController();
-  bool _isLoading = false;
+  double _currentZoom = 12.0;
+  StreamSubscription<Position>? _positionStream;
   final FlutterTts _tts = FlutterTts();
   @override
   void initState() {
     super.initState();
     _initTts();
-    _requestLocation();
-    _checkToken();
-  }
-  void _checkToken() {
-    // Check if token is valid (not empty and not the placeholder)
-    if (MAPBOX_PUBLIC_TOKEN.isNotEmpty && MAPBOX_PUBLIC_TOKEN.startsWith('pk.')) {
-      setState(() => _mapStatus = 'Token OK, loading map...');
-      debugPrint('Public token OK: ${MAPBOX_PUBLIC_TOKEN.substring(0, 20)}...');
-    } else {
-      setState(() => _mapStatus = 'ERROR: Invalid token');
-      debugPrint('Invalid token: $MAPBOX_PUBLIC_TOKEN');
-    }
+    _initWebView();
   }
   Future<void> _initTts() async {
     await _tts.setLanguage("en-US");
     await _tts.setSpeechRate(0.9);
   }
-  Future<void> _speak(String text) async {
-    await _tts.stop();
-    await _tts.speak(text);
+  void _initWebView() {
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'PavementApp',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('Message from web: ${message.message}');
+          if (message.message.contains('Route planned')) {
+            _tts.speak('Route planned successfully.');
+          }
+        },
+      )
+      ..loadRequest(Uri.parse('https://pavement.ainewsdaily.ca'));
   }
-  Future<void> _requestLocation() async {
-    geo.LocationPermission permission = await geo.Geolocator.checkPermission();
-    if (permission == geo.LocationPermission.denied) {
-      permission = await geo.Geolocator.requestPermission();
+  Future<void> _sendLocationToWeb(double lat, double lng) async {
+    await _controller.runJavaScript('''
+      if (typeof updateNativeLocation === 'function') {
+        updateNativeLocation($lat, $lng);
+      } else {
+        console.log('Native location:', $lat, $lng);
+        window.nativeLat = $lat;
+        window.nativeLng = $lng;
+      }
+    ''');
+  }
+  Future<void> _startTracking() async {
+    setState(() => _isTracking = true);
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
     }
-    if (permission == geo.LocationPermission.deniedForever) {
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permission denied')),
+      );
+      setState(() => _isTracking = false);
       return;
     }
-    final geo.Position position = await geo.Geolocator.getCurrentPosition();
-    setState(() {
-      _currentLat = position.latitude;
-      _currentLng = position.longitude;
-    });
-    if (_mapboxMap != null && _isMapReady && _currentLat != null) {
-      final mapbox.CameraOptions options = mapbox.CameraOptions(
-        center: mapbox.Point(
-          coordinates: mapbox.Position(_currentLng!, _currentLat!)
-        ),
-        zoom: 14.0,
-      );
-      final mapbox.MapAnimationOptions animation = mapbox.MapAnimationOptions(duration: 1000);
-      _mapboxMap!.flyTo(options, animation);
-    }
-  }
-  Future<void> _planRoute() async {
-    if (_destinationController.text.isEmpty) return;
-    setState(() => _isLoading = true);
-    try {
-      double startLat, startLng;
-      if (_startController.text.isNotEmpty) {
-        final startResponse = await http.post(
-          Uri.parse('https://pavement.ainewsdaily.ca/geocode'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'address': _startController.text}),
-        );
-        final startData = json.decode(startResponse.body);
-        startLat = startData['lat'];
-        startLng = startData['lon'];
-      } else if (_currentLat != null) {
-        startLat = _currentLat!;
-        startLng = _currentLng!;
-      } else {
-        throw Exception('No start location available');
-      }
-      final endResponse = await http.post(
-        Uri.parse('https://pavement.ainewsdaily.ca/geocode'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'address': _destinationController.text}),
-      );
-      final endData = json.decode(endResponse.body);
-      final endLat = endData['lat'];
-      final endLng = endData['lon'];
-      final routeResponse = await http.post(
-        Uri.parse('https://pavement.ainewsdaily.ca/proxy-route'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'start': [startLat, startLng],
-          'end': [endLat, endLng],
-        }),
-      );
-      final routeData = json.decode(routeResponse.body);
-      if (routeData['code'] == 'Ok') {
-        await _speak('Route planned successfully.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Route planned!')),
-        );
-        if (mounted) Navigator.pop(context);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-  void _showRoutePlanner() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SingleChildScrollView(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Plan Your Route', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: _startController,
-                decoration: const InputDecoration(
-                  labelText: 'Start (optional)',
-                  prefixIcon: Icon(Icons.my_location),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _destinationController,
-                decoration: const InputDecoration(
-                  labelText: 'Destination *',
-                  prefixIcon: Icon(Icons.location_on),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _planRoute,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0047AB),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Plan Route', style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  void _startTracking() async {
-    setState(() => _isTracking = true);
-    await _requestLocation();
-    geo.Geolocator.getPositionStream(
-      locationSettings: const geo.LocationSettings(
-        accuracy: geo.LocationAccuracy.bestForNavigation,
+    final position = await Geolocator.getCurrentPosition();
+    await _sendLocationToWeb(position.latitude, position.longitude);
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 5,
       ),
-    ).listen((geo.Position position) {
-      setState(() {
-        _currentLat = position.latitude;
-        _currentLng = position.longitude;
-      });
-      if (_mapboxMap != null && _isMapReady && _isTracking && _currentLat != null) {
-        final mapbox.CameraOptions options = mapbox.CameraOptions(
-          center: mapbox.Point(
-            coordinates: mapbox.Position(_currentLng!, _currentLat!)
-          ),
-          zoom: 15.0,
-        );
-        final mapbox.MapAnimationOptions animation = mapbox.MapAnimationOptions(duration: 500);
-        _mapboxMap!.flyTo(options, animation);
+    ).listen((Position position) async {
+      await _sendLocationToWeb(position.latitude, position.longitude);
+      if (_isTracking) {
+        await _controller.runJavaScript('''
+          if (typeof map !== 'undefined' && map && map.flyTo) {
+            map.flyTo({
+              center: [${position.longitude}, ${position.latitude}],
+              zoom: ${_currentZoom.toInt()},
+              duration: 500
+            });
+          }
+        ''');
       }
     });
   }
   void _stopTracking() {
     setState(() => _isTracking = false);
+    _positionStream?.cancel();
+  }
+  Future<void> _zoomIn() async {
+    _currentZoom = (_currentZoom + 1).clamp(1, 20);
+    await _controller.runJavaScript('''
+      if (typeof map !== 'undefined' && map && map.zoomIn) {
+        map.zoomIn();
+      } else if (typeof map !== 'undefined' && map && map.setZoom) {
+        map.setZoom(${_currentZoom.toInt()});
+      }
+    ''');
+  }
+  Future<void> _zoomOut() async {
+    _currentZoom = (_currentZoom - 1).clamp(1, 20);
+    await _controller.runJavaScript('''
+      if (typeof map !== 'undefined' && map && map.zoomOut) {
+        map.zoomOut();
+      } else if (typeof map !== 'undefined' && map && map.setZoom) {
+        map.setZoom(${_currentZoom.toInt()});
+      }
+    ''');
+  }
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
   }
   @override
   Widget build(BuildContext context) {
@@ -213,61 +126,52 @@ class _MapScreenState extends State<MapScreen> {
             icon: Icon(_isTracking ? Icons.gps_fixed : Icons.gps_off),
             onPressed: _isTracking ? _stopTracking : _startTracking,
           ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: _showRoutePlanner,
-          ),
         ],
       ),
       body: Stack(
         children: [
-          mapbox.MapWidget(
-            key: const ValueKey('mapWidget'),
-            onMapCreated: _onMapCreated,
-            cameraOptions: mapbox.CameraOptions(
-              center: mapbox.Point(
-                coordinates: mapbox.Position(-97.138, 49.895)
-              ),
-              zoom: 12.0,
-            ),
-            styleUri: 'mapbox://styles/mapbox/standard',
-          ),
+          WebViewWidget(controller: _controller),
+          // Custom zoom controls
           Positioned(
             bottom: 20,
-            left: 20,
             right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              color: Colors.black54,
-              child: Text(
-                _mapStatus,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
+            child: Column(
+              children: [
+                FloatingActionButton(
+                  heroTag: 'zoomIn',
+                  onPressed: _zoomIn,
+                  mini: true,
+                  child: const Icon(Icons.add),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton(
+                  heroTag: 'zoomOut',
+                  onPressed: _zoomOut,
+                  mini: true,
+                  child: const Icon(Icons.remove),
+                ),
+              ],
             ),
           ),
-          if (!_isMapReady)
-            const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 20),
-                  Text('Loading map...'),
-                ],
+          // Tracking indicator
+          if (_isTracking)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'GPS Active',
+                  style: TextStyle(color: Colors.white, fontSize: 12),
+                ),
               ),
             ),
         ],
       ),
-    );
-  }
-  void _onMapCreated(mapbox.MapboxMap mapboxMap) {
-    _mapboxMap = mapboxMap;
-    _isMapReady = true;
-    setState(() => _mapStatus = '✅ Map loaded!');
-    debugPrint('✅ Map created successfully!');
-    mapboxMap.location.updateSettings(
-      mapbox.LocationComponentSettings(enabled: true)
     );
   }
 }
