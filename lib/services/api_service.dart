@@ -1,5 +1,4 @@
-Set-Content -Path "lib/services/api_service.dart" -Value @'
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -56,4 +55,3 @@ class ApiService extends ChangeNotifier {
     }
   }
 }
-'@ -Encoding UTF8
