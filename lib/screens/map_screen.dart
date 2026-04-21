@@ -65,7 +65,8 @@ class _MapScreenState extends State<MapScreen> {
         ),
         zoom: 14.0,
       );
-      _mapboxMap!.flyTo(options);
+      final mapbox.MapAnimationOptions animation = mapbox.MapAnimationOptions(duration: 1000);
+      _mapboxMap!.flyTo(options, animation);
     }
   }
 
@@ -198,7 +199,8 @@ class _MapScreenState extends State<MapScreen> {
           ),
           zoom: 15.0,
         );
-        _mapboxMap!.flyTo(options);
+        final mapbox.MapAnimationOptions animation = mapbox.MapAnimationOptions(duration: 500);
+        _mapboxMap!.flyTo(options, animation);
       }
     });
   }
