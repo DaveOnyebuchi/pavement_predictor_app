@@ -7,7 +7,7 @@
     
     <application
         android:label="pavement_predictor_app"
-        android:name="${applicationName}"
+        android:name="android.app.Application"
         android:icon="@mipmap/ic_launcher">
         
         <!-- Mapbox Access Token -->
