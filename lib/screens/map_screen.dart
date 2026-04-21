@@ -1,6 +1,6 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:mapbox_gl/mapbox_gl.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
@@ -19,11 +19,12 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  MapboxMapController? _mapController;
+  MapboxMap? _mapboxMap;
+  bool _isMapReady = false;
   LatLng? _currentLocation;
   bool _isTracking = false;
   List<dynamic> _segments = [];
-  List<LatLng> _routeCoordinates = [];
+  List<Point> _routePoints = [];
   
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
@@ -62,10 +63,11 @@ class _MapScreenState extends State<MapScreen> {
       _currentLocation = LatLng(position.latitude, position.longitude);
     });
     
-    if (_mapController != null && _currentLocation != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentLocation!, zoom: 14),
+    if (_mapboxMap != null && _currentLocation != null && _isMapReady) {
+      _mapboxMap!.flyTo(
+        CameraOptions(
+          center: Point(coordinates: Position(_currentLocation!.longitude, _currentLocation!.latitude)),
+          zoom: 14,
         ),
       );
     }
@@ -87,25 +89,79 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _addSegmentsToMap() {
-    if (_mapController == null) return;
+  void _addSegmentsToMap() async {
+    if (_mapboxMap == null || !_isMapReady) return;
     
     for (int i = 0; i < _segments.length; i++) {
       final segment = _segments[i];
       final coords = segment['coords'] as List;
-      final color = segment['color'] == '#ff0000' ? '#FF0000' : '#FF8800';
+      final color = segment['color'] == '#ff0000' ? 0xFFFF0000 : 0xFFFF8800;
       
       if (coords.length >= 2) {
-        final points = coords.map<LatLng>((c) => LatLng(c[0], c[1])).toList();
+        final positions = coords.map<Position>((c) => Position(c[1], c[0])).toList();
+        final geometry = LineString(coordinates: positions);
+        final feature = Feature(geometry: geometry);
         
-        _mapController!.addLine(LineOptions(
-          geometry: points,
-          lineColor: color,
-          lineWidth: 4,
-          lineOpacity: 0.8,
-        ));
+        await _mapboxMap!.addSource(
+          GeoJsonSource(id: 'segment_source_$i', features: [feature]),
+        );
+        
+        await _mapboxMap!.addLayer(
+          LineLayer(
+            id: 'segment_layer_$i',
+            sourceId: 'segment_source_$i',
+            lineColor: color,
+            lineWidth: 4,
+            lineOpacity: 0.8,
+          ),
+        );
       }
     }
+  }
+
+  Future<void> _addRouteToMap(List<LatLng> coordinates) async {
+    if (_mapboxMap == null || !_isMapReady || coordinates.isEmpty) return;
+    
+    final positions = coordinates.map((c) => Position(c.longitude, c.latitude)).toList();
+    final geometry = LineString(coordinates: positions);
+    final feature = Feature(geometry: geometry);
+    
+    await _mapboxMap!.addSource(
+      GeoJsonSource(id: 'route_source', features: [feature]),
+    );
+    
+    await _mapboxMap!.addLayer(
+      LineLayer(
+        id: 'route_layer',
+        sourceId: 'route_source',
+        lineColor: 0xFF0078FF,
+        lineWidth: 6,
+        lineOpacity: 0.9,
+      ),
+    );
+    
+    // Fit camera to route bounds
+    double minLat = coordinates.first.latitude;
+    double maxLat = coordinates.first.latitude;
+    double minLng = coordinates.first.longitude;
+    double maxLng = coordinates.first.longitude;
+    
+    for (final point in coordinates) {
+      minLat = minLat < point.latitude ? minLat : point.latitude;
+      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
+      minLng = minLng < point.longitude ? minLng : point.longitude;
+      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+    }
+    
+    _mapboxMap!.flyTo(
+      CameraOptions(
+        bounds: Bounds(
+          southwest: Position(minLng, minLat),
+          northeast: Position(maxLng, maxLat),
+        ),
+        padding: EdgeInsets.all(50),
+      ),
+    );
   }
 
   Future<void> _planRoute() async {
@@ -156,37 +212,7 @@ class _MapScreenState extends State<MapScreen> {
             .map<LatLng>((c) => LatLng(c[0], c[1]))
             .toList();
         
-        setState(() => _routeCoordinates = coordinates);
-        
-        if (_mapController != null && coordinates.isNotEmpty) {
-          _mapController!.addLine(LineOptions(
-            geometry: coordinates,
-            lineColor: '#0078FF',
-            lineWidth: 6,
-            lineOpacity: 0.9,
-          ));
-          
-          double minLat = coordinates.first.latitude;
-          double maxLat = coordinates.first.latitude;
-          double minLng = coordinates.first.longitude;
-          double maxLng = coordinates.first.longitude;
-          
-          for (final point in coordinates) {
-            minLat = minLat < point.latitude ? minLat : point.latitude;
-            maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-            minLng = minLng < point.longitude ? minLng : point.longitude;
-            maxLng = maxLng > point.longitude ? maxLng : point.longitude;
-          }
-          
-          _mapController!.animateCamera(CameraUpdate.newLatLngBounds(
-            LatLngBounds(
-              southwest: LatLng(minLat, minLng),
-              northeast: LatLng(maxLat, maxLng),
-            ),
-            50,
-          ));
-        }
-        
+        await _addRouteToMap(coordinates);
         await _speak('Route planned. Follow the blue line on the map.');
         Navigator.pop(context);
       }
@@ -260,10 +286,11 @@ class _MapScreenState extends State<MapScreen> {
       final newLocation = LatLng(position.latitude, position.longitude);
       setState(() => _currentLocation = newLocation);
       
-      if (_mapController != null && _isTracking) {
-        _mapController!.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: newLocation, zoom: 15),
+      if (_mapboxMap != null && _isMapReady && _isTracking) {
+        _mapboxMap!.flyTo(
+          CameraOptions(
+            center: Point(coordinates: Position(newLocation.longitude, newLocation.latitude)),
+            zoom: 15,
           ),
         );
       }
@@ -290,29 +317,24 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      body: MapboxMap(
-        accessToken: MAPBOX_TOKEN,
-        onMapCreated: (controller) {
-          _mapController = controller;
-          _addSegmentsToMap();
-          if (_currentLocation != null) {
-            controller.animateCamera(
-              CameraUpdate.newCameraPosition(
-                CameraPosition(target: _currentLocation!, zoom: 14),
-              ),
-            );
-          }
-        },
-        initialCameraPosition: const CameraPosition(
-          target: LatLng(49.895, -97.138),
+      body: MapWidget(
+        key: const ValueKey('mapWidget'),
+        onMapCreated: _onMapCreated,
+        cameraOptions: CameraOptions(
+          center: Point(coordinates: Position(-97.138, 49.895)),
           zoom: 12,
         ),
-        compassEnabled: true,
-        myLocationEnabled: _isTracking,
-        myLocationTrackingMode: _isTracking 
-            ? MyLocationTrackingMode.Tracking
-            : MyLocationTrackingMode.None,
+        styleUri: MapboxStyles.STREETS,
       ),
     );
+  }
+  
+  void _onMapCreated(MapboxMap mapboxMap) {
+    _mapboxMap = mapboxMap;
+    _isMapReady = true;
+    _addSegmentsToMap();
+    
+    // Enable user location on map
+    mapboxMap.location.updateSettings(LocationComponentSettings(enabled: true));
   }
 }
