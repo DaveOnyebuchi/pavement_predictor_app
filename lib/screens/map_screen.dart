@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -21,10 +21,10 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   MapboxMap? _mapboxMap;
   bool _isMapReady = false;
-  LatLng? _currentLocation;
+  double? _currentLat;
+  double? _currentLng;
   bool _isTracking = false;
   List<dynamic> _segments = [];
-  List<Point> _routePoints = [];
   
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
@@ -60,13 +60,14 @@ class _MapScreenState extends State<MapScreen> {
     
     final position = await Geolocator.getCurrentPosition();
     setState(() {
-      _currentLocation = LatLng(position.latitude, position.longitude);
+      _currentLat = position.latitude;
+      _currentLng = position.longitude;
     });
     
-    if (_mapboxMap != null && _currentLocation != null && _isMapReady) {
+    if (_mapboxMap != null && _isMapReady && _currentLat != null) {
       _mapboxMap!.flyTo(
         CameraOptions(
-          center: Point(coordinates: Position(_currentLocation!.longitude, _currentLocation!.latitude)),
+          center: Point(coordinates: Position(_currentLng!, _currentLat!)),
           zoom: 14,
         ),
       );
@@ -99,69 +100,17 @@ class _MapScreenState extends State<MapScreen> {
       
       if (coords.length >= 2) {
         final positions = coords.map<Position>((c) => Position(c[1], c[0])).toList();
-        final geometry = LineString(coordinates: positions);
-        final feature = Feature(geometry: geometry);
         
-        await _mapboxMap!.addSource(
-          GeoJsonSource(id: 'segment_source_$i', features: [feature]),
-        );
-        
-        await _mapboxMap!.addLayer(
-          LineLayer(
-            id: 'segment_layer_$i',
-            sourceId: 'segment_source_$i',
+        // Add as a polyline using annotation API
+        await _mapboxMap!.addPolyline(
+          PolylineOptions(
+            geometry: LineString(coordinates: positions),
             lineColor: color,
             lineWidth: 4,
-            lineOpacity: 0.8,
           ),
         );
       }
     }
-  }
-
-  Future<void> _addRouteToMap(List<LatLng> coordinates) async {
-    if (_mapboxMap == null || !_isMapReady || coordinates.isEmpty) return;
-    
-    final positions = coordinates.map((c) => Position(c.longitude, c.latitude)).toList();
-    final geometry = LineString(coordinates: positions);
-    final feature = Feature(geometry: geometry);
-    
-    await _mapboxMap!.addSource(
-      GeoJsonSource(id: 'route_source', features: [feature]),
-    );
-    
-    await _mapboxMap!.addLayer(
-      LineLayer(
-        id: 'route_layer',
-        sourceId: 'route_source',
-        lineColor: 0xFF0078FF,
-        lineWidth: 6,
-        lineOpacity: 0.9,
-      ),
-    );
-    
-    // Fit camera to route bounds
-    double minLat = coordinates.first.latitude;
-    double maxLat = coordinates.first.latitude;
-    double minLng = coordinates.first.longitude;
-    double maxLng = coordinates.first.longitude;
-    
-    for (final point in coordinates) {
-      minLat = minLat < point.latitude ? minLat : point.latitude;
-      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-      minLng = minLng < point.longitude ? minLng : point.longitude;
-      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
-    }
-    
-    _mapboxMap!.flyTo(
-      CameraOptions(
-        bounds: Bounds(
-          southwest: Position(minLng, minLat),
-          northeast: Position(maxLng, maxLat),
-        ),
-        padding: EdgeInsets.all(50),
-      ),
-    );
   }
 
   Future<void> _planRoute() async {
@@ -181,9 +130,9 @@ class _MapScreenState extends State<MapScreen> {
         final startData = json.decode(startResponse.body);
         startLat = startData['lat'];
         startLng = startData['lon'];
-      } else if (_currentLocation != null) {
-        startLat = _currentLocation!.latitude;
-        startLng = _currentLocation!.longitude;
+      } else if (_currentLat != null) {
+        startLat = _currentLat!;
+        startLng = _currentLng!;
       } else {
         throw Exception('No start location available');
       }
@@ -209,10 +158,42 @@ class _MapScreenState extends State<MapScreen> {
       
       if (routeData['code'] == 'Ok') {
         final coordinates = (routeData['coordinates'] as List)
-            .map<LatLng>((c) => LatLng(c[0], c[1]))
+            .map<Position>((c) => Position(c[1], c[0]))
             .toList();
         
-        await _addRouteToMap(coordinates);
+        if (_mapboxMap != null && _isMapReady && coordinates.isNotEmpty) {
+          await _mapboxMap!.addPolyline(
+            PolylineOptions(
+              geometry: LineString(coordinates: coordinates),
+              lineColor: 0xFF0078FF,
+              lineWidth: 6,
+            ),
+          );
+          
+          // Fit camera to route bounds
+          double minLat = coordinates.first.latitude;
+          double maxLat = coordinates.first.latitude;
+          double minLng = coordinates.first.longitude;
+          double maxLng = coordinates.first.longitude;
+          
+          for (final point in coordinates) {
+            minLat = minLat < point.latitude ? minLat : point.latitude;
+            maxLat = maxLat > point.latitude ? maxLat : point.latitude;
+            minLng = minLng < point.longitude ? minLng : point.longitude;
+            maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+          }
+          
+          _mapboxMap!.flyTo(
+            CameraOptions(
+              bounds: Bounds(
+                southwest: Position(minLng, minLat),
+                northeast: Position(maxLng, maxLat),
+              ),
+              padding: EdgeInsets.all(50),
+            ),
+          );
+        }
+        
         await _speak('Route planned. Follow the blue line on the map.');
         Navigator.pop(context);
       }
@@ -283,13 +264,15 @@ class _MapScreenState extends State<MapScreen> {
         distanceFilter: 5,
       ),
     ).listen((Position position) {
-      final newLocation = LatLng(position.latitude, position.longitude);
-      setState(() => _currentLocation = newLocation);
+      setState(() {
+        _currentLat = position.latitude;
+        _currentLng = position.longitude;
+      });
       
-      if (_mapboxMap != null && _isMapReady && _isTracking) {
+      if (_mapboxMap != null && _isMapReady && _isTracking && _currentLat != null) {
         _mapboxMap!.flyTo(
           CameraOptions(
-            center: Point(coordinates: Position(newLocation.longitude, newLocation.latitude)),
+            center: Point(coordinates: Position(_currentLng!, _currentLat!)),
             zoom: 15,
           ),
         );

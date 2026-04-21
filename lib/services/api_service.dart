@@ -1,6 +1,6 @@
+Set-Content -Path "lib/services/api_service.dart" -Value @'
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
 class ApiService extends ChangeNotifier {
@@ -55,20 +55,5 @@ class ApiService extends ChangeNotifier {
       throw Exception('Network error: $e');
     }
   }
-  
-  Future<void> processRoute(List<LatLng> coordinates, List<String> instructions) async {
-    try {
-      final coordsList = coordinates.map((c) => [c.latitude, c.longitude]).toList();
-      await http.post(
-        Uri.parse('$baseUrl/process-route'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'coordinates': coordsList,
-          'instructions': instructions,
-        }),
-      );
-    } catch (e) {
-      // Silent fail - non-critical
-    }
-  }
 }
+'@ -Encoding UTF8
