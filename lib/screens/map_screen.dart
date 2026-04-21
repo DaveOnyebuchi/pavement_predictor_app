@@ -11,8 +11,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   late final WebViewController _controller;
   bool _isTracking = false;
-  double _currentZoom = 12.0;
-  StreamSubscription<Position>? _positionStream;
+  String _debugMessage = "Initializing...";
   final FlutterTts _tts = FlutterTts();
   @override
   void initState() {
@@ -27,91 +26,55 @@ class _MapScreenState extends State<MapScreen> {
   void _initWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel(
-        'PavementApp',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('Message from web: ${message.message}');
-          if (message.message.contains('Route planned')) {
-            _tts.speak('Route planned successfully.');
-          }
-        },
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() => _debugMessage = "Loading: $url");
+            debugPrint("Page started: $url");
+          },
+          onPageFinished: (String url) {
+            setState(() => _debugMessage = "Loaded: $url");
+            debugPrint("Page finished: $url");
+            // Test if JavaScript works
+            _controller.runJavaScript('console.log("Flutter: Page loaded");');
+          },
+          onWebResourceError: (WebResourceError error) {
+            setState(() => _debugMessage = "Error: ${error.description}");
+            debugPrint("WebView error: ${error.description}");
+          },
+        ),
       )
       ..loadRequest(Uri.parse('https://pavement.ainewsdaily.ca'));
   }
-  Future<void> _sendLocationToWeb(double lat, double lng) async {
-    await _controller.runJavaScript('''
-      if (typeof updateNativeLocation === 'function') {
-        updateNativeLocation($lat, $lng);
-      } else {
-        console.log('Native location:', $lat, $lng);
-        window.nativeLat = $lat;
-        window.nativeLng = $lng;
-      }
-    ''');
-  }
-  Future<void> _startTracking() async {
-    setState(() => _isTracking = true);
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+  Future<void> _testJavaScript() async {
+    try {
+      final result = await _controller.runJavaScriptReturningResult('''
+        (function() {
+          return {
+            hasMap: typeof map !== 'undefined',
+            hasMapbox: typeof mapboxgl !== 'undefined',
+            url: window.location.href
+          };
+        })();
+      ''');
+      setState(() => _debugMessage = "JS Test: $result");
+      debugPrint("JavaScript test result: $result");
+    } catch (e) {
+      setState(() => _debugMessage = "JS Error: $e");
+      debugPrint("JavaScript error: $e");
     }
-    if (permission == LocationPermission.deniedForever) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location permission denied')),
-      );
-      setState(() => _isTracking = false);
-      return;
-    }
-    final position = await Geolocator.getCurrentPosition();
-    await _sendLocationToWeb(position.latitude, position.longitude);
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 5,
-      ),
-    ).listen((Position position) async {
-      await _sendLocationToWeb(position.latitude, position.longitude);
-      if (_isTracking) {
-        await _controller.runJavaScript('''
-          if (typeof map !== 'undefined' && map && map.flyTo) {
-            map.flyTo({
-              center: [${position.longitude}, ${position.latitude}],
-              zoom: ${_currentZoom.toInt()},
-              duration: 500
-            });
-          }
-        ''');
-      }
-    });
   }
-  void _stopTracking() {
-    setState(() => _isTracking = false);
-    _positionStream?.cancel();
-  }
-  Future<void> _zoomIn() async {
-    _currentZoom = (_currentZoom + 1).clamp(1, 20);
+  Future<void> _sendTestLocation() async {
     await _controller.runJavaScript('''
-      if (typeof map !== 'undefined' && map && map.zoomIn) {
-        map.zoomIn();
-      } else if (typeof map !== 'undefined' && map && map.setZoom) {
-        map.setZoom(${_currentZoom.toInt()});
+      console.log("Flutter: Sending test location");
+      if (typeof map !== 'undefined' && map) {
+        map.flyTo({
+          center: [-97.138, 49.895],
+          zoom: 14
+        });
       }
     ''');
-  }
-  Future<void> _zoomOut() async {
-    _currentZoom = (_currentZoom - 1).clamp(1, 20);
-    await _controller.runJavaScript('''
-      if (typeof map !== 'undefined' && map && map.zoomOut) {
-        map.zoomOut();
-      } else if (typeof map !== 'undefined' && map && map.setZoom) {
-        map.setZoom(${_currentZoom.toInt()});
-      }
-    ''');
-  }
-  @override
-  void dispose() {
-    _positionStream?.cancel();
-    super.dispose();
+    setState(() => _debugMessage = "Sent test location to map");
   }
   @override
   Widget build(BuildContext context) {
@@ -120,8 +83,12 @@ class _MapScreenState extends State<MapScreen> {
         title: const Text('Pavement Predictor'),
         actions: [
           IconButton(
-            icon: Icon(_isTracking ? Icons.gps_fixed : Icons.gps_off),
-            onPressed: _isTracking ? _stopTracking : _startTracking,
+            icon: const Icon(Icons.code),
+            onPressed: _testJavaScript,
+          ),
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            onPressed: _sendTestLocation,
           ),
         ],
       ),
@@ -130,41 +97,18 @@ class _MapScreenState extends State<MapScreen> {
           WebViewWidget(controller: _controller),
           Positioned(
             bottom: 20,
+            left: 20,
             right: 20,
-            child: Column(
-              children: [
-                FloatingActionButton(
-                  heroTag: 'zoomIn',
-                  onPressed: _zoomIn,
-                  mini: true,
-                  child: const Icon(Icons.add),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton(
-                  heroTag: 'zoomOut',
-                  onPressed: _zoomOut,
-                  mini: true,
-                  child: const Icon(Icons.remove),
-                ),
-              ],
-            ),
-          ),
-          if (_isTracking)
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'GPS Active',
-                  style: TextStyle(color: Colors.white, fontSize: 12),
-                ),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              color: Colors.black87,
+              child: Text(
+                _debugMessage,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                textAlign: TextAlign.center,
               ),
             ),
+          ),
         ],
       ),
     );
