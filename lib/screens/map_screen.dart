@@ -4,9 +4,8 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
-// Token will be injected from local.properties at build time
-// For local development, set MAPBOX_TOKEN environment variable
-const String MAPBOX_TOKEN = String.fromEnvironment('MAPBOX_TOKEN', defaultValue: '');
+// Use the same token name as your GitHub secret
+const String MAPBOX_TOKEN = String.fromEnvironment('MAPBOX_DOWNLOADS_TOKEN', defaultValue: '');
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
   @override
@@ -32,10 +31,10 @@ class _MapScreenState extends State<MapScreen> {
   }
   void _checkToken() {
     if (MAPBOX_TOKEN.isEmpty) {
-      setState(() => _mapStatus = 'ERROR: No Mapbox token. Set MAPBOX_TOKEN environment variable.');
+      setState(() => _mapStatus = 'ERROR: No token. Check MAPBOX_DOWNLOADS_TOKEN secret.');
     } else {
       setState(() => _mapStatus = 'Token present, loading map...');
-      debugPrint('Token loaded (starts with: ${MAPBOX_TOKEN.substring(0, 10)}...)');
+      debugPrint('Token loaded');
     }
   }
   Future<void> _initTts() async {
