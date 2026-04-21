@@ -17,6 +17,7 @@ dependencies:
   provider: ^6.0.5
   mapbox_maps_flutter: ^2.0.0
   cupertino_icons: ^1.0.8
+  webview_flutter: ^4.4.0
 
 dev_dependencies:
   flutter_test:
