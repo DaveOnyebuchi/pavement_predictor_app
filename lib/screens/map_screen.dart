@@ -4,45 +4,36 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
-
 const String MAPBOX_TOKEN = 'pk.eyJ1IjoiNzkxOTYxMSIsImEiOiJjbW8zd3kzbXgxYjVmMnBwdWZnemF3NWhlIn0.nPTx4At6TJEiNe7xlU4YkQ';
-
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
-
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
-
 class _MapScreenState extends State<MapScreen> {
   mapbox.MapboxMap? _mapboxMap;
   bool _isMapReady = false;
   double? _currentLat;
   double? _currentLng;
   bool _isTracking = false;
-  
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _startController = TextEditingController();
   bool _isLoading = false;
   final FlutterTts _tts = FlutterTts();
-
   @override
   void initState() {
     super.initState();
     _initTts();
     _requestLocation();
   }
-
   Future<void> _initTts() async {
     await _tts.setLanguage("en-US");
     await _tts.setSpeechRate(0.9);
   }
-
   Future<void> _speak(String text) async {
     await _tts.stop();
     await _tts.speak(text);
   }
-
   Future<void> _requestLocation() async {
     geo.LocationPermission permission = await geo.Geolocator.checkPermission();
     if (permission == geo.LocationPermission.denied) {
@@ -51,13 +42,11 @@ class _MapScreenState extends State<MapScreen> {
     if (permission == geo.LocationPermission.deniedForever) {
       return;
     }
-    
     final geo.Position position = await geo.Geolocator.getCurrentPosition();
     setState(() {
       _currentLat = position.latitude;
       _currentLng = position.longitude;
     });
-    
     if (_mapboxMap != null && _isMapReady && _currentLat != null) {
       final mapbox.CameraOptions options = mapbox.CameraOptions(
         center: mapbox.Point(
@@ -69,15 +58,11 @@ class _MapScreenState extends State<MapScreen> {
       _mapboxMap!.flyTo(options, animation);
     }
   }
-
   Future<void> _planRoute() async {
     if (_destinationController.text.isEmpty) return;
-    
     setState(() => _isLoading = true);
-    
     try {
       double startLat, startLng;
-      
       if (_startController.text.isNotEmpty) {
         final startResponse = await http.post(
           Uri.parse('https://pavement.ainewsdaily.ca/geocode'),
@@ -93,7 +78,6 @@ class _MapScreenState extends State<MapScreen> {
       } else {
         throw Exception('No start location available');
       }
-      
       final endResponse = await http.post(
         Uri.parse('https://pavement.ainewsdaily.ca/geocode'),
         headers: {'Content-Type': 'application/json'},
@@ -102,7 +86,6 @@ class _MapScreenState extends State<MapScreen> {
       final endData = json.decode(endResponse.body);
       final endLat = endData['lat'];
       final endLng = endData['lon'];
-      
       final routeResponse = await http.post(
         Uri.parse('https://pavement.ainewsdaily.ca/proxy-route'),
         headers: {'Content-Type': 'application/json'},
@@ -112,13 +95,12 @@ class _MapScreenState extends State<MapScreen> {
         }),
       );
       final routeData = json.decode(routeResponse.body);
-      
       if (routeData['code'] == 'Ok') {
         await _speak('Route planned successfully.');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Route planned!')),
         );
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +110,6 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
   void _showRoutePlanner() {
     showModalBottomSheet(
       context: context,
@@ -136,51 +117,54 @@ class _MapScreenState extends State<MapScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Plan Your Route', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _startController,
-              decoration: const InputDecoration(
-                labelText: 'Start (optional)',
-                prefixIcon: Icon(Icons.my_location),
-                border: OutlineInputBorder(),
+      builder: (context) => SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Plan Your Route', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _startController,
+                decoration: const InputDecoration(
+                  labelText: 'Start (optional)',
+                  prefixIcon: Icon(Icons.my_location),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _destinationController,
-              decoration: const InputDecoration(
-                labelText: 'Destination *',
-                prefixIcon: Icon(Icons.location_on),
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _destinationController,
+                decoration: const InputDecoration(
+                  labelText: 'Destination *',
+                  prefixIcon: Icon(Icons.location_on),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _planRoute,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0047AB),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _planRoute,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0047AB),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Plan Route', style: TextStyle(fontSize: 16)),
               ),
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('Plan Route', style: TextStyle(fontSize: 16)),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
-
   void _startTracking() async {
     setState(() => _isTracking = true);
     await _requestLocation();
-    
     geo.Geolocator.getPositionStream(
       locationSettings: const geo.LocationSettings(
         accuracy: geo.LocationAccuracy.bestForNavigation,
@@ -191,7 +175,6 @@ class _MapScreenState extends State<MapScreen> {
         _currentLat = position.latitude;
         _currentLng = position.longitude;
       });
-      
       if (_mapboxMap != null && _isMapReady && _isTracking && _currentLat != null) {
         final mapbox.CameraOptions options = mapbox.CameraOptions(
           center: mapbox.Point(
@@ -204,11 +187,9 @@ class _MapScreenState extends State<MapScreen> {
       }
     });
   }
-
   void _stopTracking() {
     setState(() => _isTracking = false);
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -234,14 +215,14 @@ class _MapScreenState extends State<MapScreen> {
           ),
           zoom: 12.0,
         ),
-        styleUri: 'mapbox://styles/mapbox/streets-v12',
+        styleUri: 'mapbox://styles/mapbox/light-v11',
       ),
     );
   }
-  
   void _onMapCreated(mapbox.MapboxMap mapboxMap) {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
+    debugPrint('✅ Map created successfully!');
     mapboxMap.location.updateSettings(
       mapbox.LocationComponentSettings(enabled: true)
     );
