@@ -1,7 +1,8 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
+// Import with aliases to resolve class name conflicts
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -15,7 +16,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  MapboxMap? _mapboxMap;
+  mapbox.MapboxMap? _mapboxMap;
   bool _isMapReady = false;
   double? _currentLat;
   double? _currentLng;
@@ -44,25 +45,29 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _requestLocation() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    geo.LocationPermission permission = await geo.Geolocator.checkPermission();
+    if (permission == geo.LocationPermission.denied) {
+      permission = await geo.Geolocator.requestPermission();
     }
-    if (permission == LocationPermission.deniedForever) {
+    if (permission == geo.LocationPermission.deniedForever) {
       return;
     }
     
-    final position = await Geolocator.getCurrentPosition();
+    final geo.Position position = await geo.Geolocator.getCurrentPosition();
     setState(() {
       _currentLat = position.latitude;
       _currentLng = position.longitude;
     });
     
     if (_mapboxMap != null && _isMapReady && _currentLat != null) {
-      _mapboxMap!.flyTo(CameraOptions(
-        center: Point(coordinates: Position(_currentLng!, _currentLat!)),
-        zoom: 14.0,
-      ));
+      _mapboxMap!.flyTo(
+        mapbox.CameraOptions(
+          center: mapbox.Point(
+            coordinates: mapbox.Position(_currentLng!, _currentLat!)
+          ),
+          zoom: 14.0,
+        ),
+      );
     }
   }
 
@@ -177,22 +182,26 @@ class _MapScreenState extends State<MapScreen> {
     setState(() => _isTracking = true);
     await _requestLocation();
     
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+    geo.Geolocator.getPositionStream(
+      locationSettings: const geo.LocationSettings(
+        accuracy: geo.LocationAccuracy.bestForNavigation,
         distanceFilter: 5,
       ),
-    ).listen((Position position) {
+    ).listen((geo.Position position) {
       setState(() {
         _currentLat = position.latitude;
         _currentLng = position.longitude;
       });
       
       if (_mapboxMap != null && _isMapReady && _isTracking && _currentLat != null) {
-        _mapboxMap!.flyTo(CameraOptions(
-          center: Point(coordinates: Position(_currentLng!, _currentLat!)),
-          zoom: 15.0,
-        ));
+        _mapboxMap!.flyTo(
+          mapbox.CameraOptions(
+            center: mapbox.Point(
+              coordinates: mapbox.Position(_currentLng!, _currentLat!)
+            ),
+            zoom: 15.0,
+          ),
+        );
       }
     });
   }
@@ -217,11 +226,13 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      body: MapWidget(
+      body: mapbox.MapWidget(
         key: const ValueKey('mapWidget'),
         onMapCreated: _onMapCreated,
-        cameraOptions: CameraOptions(
-          center: Point(coordinates: Position(-97.138, 49.895)),
+        cameraOptions: mapbox.CameraOptions(
+          center: mapbox.Point(
+            coordinates: mapbox.Position(-97.138, 49.895)
+          ),
           zoom: 12.0,
         ),
         styleUri: 'mapbox://styles/mapbox/streets-v12',
@@ -229,9 +240,11 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
   
-  void _onMapCreated(MapboxMap mapboxMap) {
+  void _onMapCreated(mapbox.MapboxMap mapboxMap) {
     _mapboxMap = mapboxMap;
     _isMapReady = true;
-    mapboxMap.location.updateSettings(LocationComponentSettings(enabled: true));
+    mapboxMap.location.updateSettings(
+      mapbox.LocationComponentSettings(enabled: true)
+    );
   }
 }
