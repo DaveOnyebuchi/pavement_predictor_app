@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
@@ -41,6 +41,4 @@ flutter {
     source = "../.."
 }
 
-dependencies {
-    implementation 'com.mapbox.maps:android:11.0.0'
-}
+// Do NOT add manual Mapbox dependencies here - the plugin handles them
